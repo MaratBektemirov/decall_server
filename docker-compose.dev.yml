@@ -1,0 +1,25 @@
+services:
+  api:
+    image: decall_server-api:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["go mod download && exec /usr/local/bin/air -c .air.toml"]
+    ports:
+      - "${API_HOST_PORT:-8080}:8080"
+    volumes:
+      - .:/app:delegated
+      - go_mod_cache:/go/pkg/mod
+      - go_build_cache:/root/.cache/go-build
+    environment:
+      GOMODCACHE: /go/pkg/mod
+      GOCACHE: /root/.cache/go-build
+      AUTH_DOMAIN: ${AUTH_DOMAIN:-localhost}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      CHALLENGE_TTL_SEC: ${CHALLENGE_TTL_SEC:-300}
+
+volumes:
+  go_mod_cache:
+  go_build_cache:
