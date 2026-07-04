@@ -14,6 +14,7 @@ import (
 	"decall_server/internal/config"
 	"decall_server/internal/middleware"
 	signaling "decall_server/internal/signal"
+	"decall_server/internal/words"
 )
 
 func main() {
@@ -34,6 +35,23 @@ func main() {
 
 	mux.HandleFunc("GET /auth/challenge", middleware.WithCORS(cfg.CORSOrigins, authHandler.IssueChallenge))
 	mux.HandleFunc("OPTIONS /auth/challenge", middleware.WithCORS(cfg.CORSOrigins, func(w http.ResponseWriter, r *http.Request) {}))
+
+	// For generate Call ID
+	mux.HandleFunc("GET /generate-id", middleware.WithCORS(cfg.CORSOrigins, func(w http.ResponseWriter, r *http.Request) {
+		pubKey := r.URL.Query().Get("pubkey")
+		if pubKey == "" {
+			http.Error(w, `{"error": "pubkey is required"}`, http.StatusBadRequest)
+			return
+		}
+
+		callID := words.GenerateID(pubKey)
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": callID})
+	}))
+
+	// Allowing pre requests for the browser
+	mux.HandleFunc("OPTIONS /generate-id", middleware.WithCORS(cfg.CORSOrigins, func(w http.ResponseWriter, r *http.Request) {}))
 
 	mux.Handle("GET /signal", signalHandler)
 
