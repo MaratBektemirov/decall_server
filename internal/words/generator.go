@@ -4,15 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-
-	"github.com/cosmos/go-bip39"
 )
 
-// GenerateID returns 4 word by BIP39 standard
 func GenerateID(pubKey string) string {
-	wordList := bip39.WordList
-	dictLen := uint16(len(wordList))
-
 	hash := sha256.Sum256([]byte(pubKey))
 
 	w1 := binary.BigEndian.Uint16(hash[0:2])
@@ -20,10 +14,10 @@ func GenerateID(pubKey string) string {
 	w3 := binary.BigEndian.Uint16(hash[4:6])
 	w4 := binary.BigEndian.Uint16(hash[6:8])
 
-	return fmt.Sprintf("%s-%s-%s-%s",
-		wordList[w1%dictLen],
-		wordList[w2%dictLen],
-		wordList[w3%dictLen],
-		wordList[w4%dictLen],
+	return fmt.Sprintf("%04d-%04d-%04d-%04d",
+		w1%10000,
+		w2%10000,
+		w3%10000,
+		w4%10000,
 	)
 }
