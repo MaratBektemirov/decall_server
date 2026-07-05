@@ -254,10 +254,7 @@ func (p *peer) Leave() {
 	p.room.mu.Lock()
 	delete(p.room.peers, p)
 	empty := len(p.room.peers) == 0
-	wasApproved := p.room.approved
-	if len(p.room.peers) < maxPeersPerRoom {
-		p.room.approved = false
-	}
+	p.room.approved = false
 	remaining := make([]*peer, 0, len(p.room.peers))
 	for other := range p.room.peers {
 		remaining = append(remaining, other)
@@ -265,12 +262,8 @@ func (p *peer) Leave() {
 	roomID := p.room.id
 	p.room.mu.Unlock()
 
-	if wasApproved {
-		for _, other := range remaining {
-			other.write(Outbound{Type: "peer-left"})
-		}
-	} else if len(remaining) == 1 {
-		remaining[0].write(Outbound{Type: "waiting"})
+	for _, other := range remaining {
+		other.write(Outbound{Type: "peer-left", Message: "Other participant disconnected"})
 	}
 
 	if empty {
