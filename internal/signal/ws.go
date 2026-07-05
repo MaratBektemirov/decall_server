@@ -70,7 +70,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			joined, err := h.hub.Join(roomID, msg.Role)
+			joined, err := h.hub.Join(roomID, msg.Role, msg.CallID)
 			if err != nil {
 				_ = conn.WriteJSON(Outbound{Type: "error", Message: err.Error()})
 				continue
