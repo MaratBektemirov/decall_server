@@ -18,7 +18,8 @@ func NewHandler(cfg config.Config, authHandler *auth.Handler) *Handler {
 }
 
 type credentialsRequest struct {
-	Proof auth.SecretAuthProof `json:"proof"`
+	Proof    auth.SecretAuthProof    `json:"proof"`
+	WebAuthn *auth.VerifyProofOptions `json:"webauthn,omitempty"`
 }
 
 func (h *Handler) IssueCredentials(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +34,12 @@ func (h *Handler) IssueCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.auth.VerifyProof(h.cfg, req.Proof); err != nil {
+	opts := auth.VerifyProofOptions{}
+	if req.WebAuthn != nil {
+		opts = *req.WebAuthn
+	}
+
+	if err := h.auth.VerifyProof(h.cfg, req.Proof, opts); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

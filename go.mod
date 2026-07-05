@@ -15,6 +15,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.6 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
+	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/supranational/blst v0.3.16 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect

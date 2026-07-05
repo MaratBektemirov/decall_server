@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/mr-tron/base58/base58"
 
 	"decall_server/internal/config"
 )
@@ -46,7 +48,7 @@ type secretAuthPubKey struct {
 	Encoding  string `json:"encoding"`
 }
 
-func (h *Handler) VerifyProof(cfg config.Config, proof SecretAuthProof) error {
+func (h *Handler) VerifyProof(cfg config.Config, proof SecretAuthProof, opts VerifyProofOptions) error {
 	if strings.TrimSpace(proof.Message) == "" {
 		return errors.New("proof message required")
 	}
@@ -79,17 +81,33 @@ func (h *Handler) VerifyProof(cfg config.Config, proof SecretAuthProof) error {
 	if proof.Signature.Value == "" {
 		return errors.New("invalid signature")
 	}
-	if proof.Signature.Extension != nil {
-		return errors.New("webauthn proofs are not supported yet")
-	}
 
 	switch {
 	case proof.PubKey.Algorithm == "secp256k1" && proof.PubKey.Source == "ethereum":
 		if !verifyEthereumPersonalSign(proof.Message, proof.Signature.Value, proof.PubKey.Value) {
 			return errors.New("invalid signature")
 		}
+	case proof.PubKey.Algorithm == "secp256k1" && proof.PubKey.Source == "tron":
+		if !verifyTronAddressSign(proof.Message, proof.Signature.Value, proof.PubKey.Value) {
+			return errors.New("invalid signature")
+		}
 	case proof.PubKey.Algorithm == "secp256k1" && proof.PubKey.Source == "raw":
 		if !verifyRawSecp256k1PersonalSign(proof.Message, proof.Signature.Value, proof.PubKey.Value, signatureEncoding(proof)) {
+			return errors.New("invalid signature")
+		}
+	case proof.PubKey.Algorithm == "Ed25519" && (proof.PubKey.Source == "raw" || proof.PubKey.Source == "ton"):
+		if !verifyEd25519Message(proof.Message, proof.Signature.Value, proof.PubKey.Value, signatureEncoding(proof), pubKeyEncoding(proof.PubKey)) {
+			return errors.New("invalid signature")
+		}
+	case proof.PubKey.Algorithm == "Ed25519" && proof.PubKey.Source == "solana":
+		if !verifySolanaMessage(proof.Message, proof.Signature.Value, proof.PubKey.Value, signatureEncoding(proof)) {
+			return errors.New("invalid signature")
+		}
+	case proof.PubKey.Algorithm == "ES256" && proof.PubKey.Source == "webauthn":
+		if opts.WebAuthnCredentialPublicKey == "" {
+			return errors.New("webauthn credentialPublicKey required")
+		}
+		if !verifyWebAuthnProof(proof, opts, cfg.AuthDomain) {
 			return errors.New("invalid signature")
 		}
 	default:
@@ -216,6 +234,45 @@ func verifyRawSecp256k1PersonalSign(message, signature, pubKeyValue, encoding st
 	return hex.EncodeToString(got) == hex.EncodeToString(want)
 }
 
+func verifySolanaMessage(message, signature, address, sigEncoding string) bool {
+	pub, err := decodeEd25519PublicKey(address, "base58")
+	if err != nil {
+		return false
+	}
+
+	sig, err := decodeBytes(signature, sigEncoding)
+	if err != nil || len(sig) != ed25519.SignatureSize {
+		return false
+	}
+
+	return ed25519.Verify(pub, []byte(message), sig)
+}
+
+func verifyEd25519Message(message, signature, pubKeyValue, sigEncoding, keyEncoding string) bool {
+	pub, err := decodeEd25519PublicKey(pubKeyValue, keyEncoding)
+	if err != nil {
+		return false
+	}
+
+	sig, err := decodeBytes(signature, sigEncoding)
+	if err != nil || len(sig) != ed25519.SignatureSize {
+		return false
+	}
+
+	return ed25519.Verify(pub, []byte(message), sig)
+}
+
+func decodeEd25519PublicKey(value, encoding string) (ed25519.PublicKey, error) {
+	key, err := decodeBytes(value, encoding)
+	if err != nil {
+		return nil, err
+	}
+	if len(key) != ed25519.PublicKeySize {
+		return nil, errors.New("invalid ed25519 public key length")
+	}
+	return ed25519.PublicKey(key), nil
+}
+
 func decodeSecp256k1Signature(value, encoding string) ([]byte, error) {
 	sig, err := decodeBytes(value, encoding)
 	if err != nil {
@@ -250,6 +307,12 @@ func decodeBytes(value, encoding string) ([]byte, error) {
 		return base64.StdEncoding.DecodeString(value)
 	case "base64url":
 		return base64.RawURLEncoding.DecodeString(value)
+	case "base58":
+		decoded, err := base58.Decode(value)
+		if err != nil {
+			return nil, err
+		}
+		return decoded, nil
 	default:
 		return nil, fmt.Errorf("unsupported encoding: %s", encoding)
 	}

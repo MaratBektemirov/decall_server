@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"strconv"
 	"testing"
 	"time"
@@ -52,7 +55,40 @@ func TestVerifyProofDomainMismatch(t *testing.T) {
 		},
 	}
 
-	if err := h.VerifyProof(cfg, proof); err == nil {
+	if err := h.VerifyProof(cfg, proof, VerifyProofOptions{}); err == nil {
 		t.Fatal("expected domain mismatch error")
+	}
+}
+
+func TestVerifyEd25519RawProof(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	exp := time.Now().Unix() + 60
+	nonce := "ed25519-test-nonce"
+	message := "localhost wants you to prove your signing key:\n\nnonce: " + nonce + "\nexp: " + strconv.FormatInt(exp, 10)
+	signature := ed25519.Sign(priv, []byte(message))
+
+	h := NewHandler(config.Config{})
+	h.nonces.Store(nonce, exp)
+
+	proof := SecretAuthProof{
+		Message: message,
+		Signature: secretAuthSignature{
+			Value:    base64.StdEncoding.EncodeToString(signature),
+			Encoding: "base64",
+		},
+		PubKey: secretAuthPubKey{
+			Algorithm: "Ed25519",
+			Source:    "raw",
+			Value:     base64.StdEncoding.EncodeToString(pub),
+			Encoding:  "base64",
+		},
+	}
+
+	if err := h.VerifyProof(config.Config{AuthDomain: "localhost"}, proof, VerifyProofOptions{}); err != nil {
+		t.Fatalf("VerifyProof: %v", err)
 	}
 }
