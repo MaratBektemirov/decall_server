@@ -49,6 +49,35 @@ WebSocket signaling: `ws://localhost:8080/signal` (via client proxy: `/api/signa
 
 ## Production
 
+### Firewall (UFW)
+
+On the VPS, allow only what the stack needs. WebRTC **signaling** is served by the Go API and proxied by nginx over **HTTPS/WSS** (port 443). **Media** (RTP, `RTCDataChannel`) goes **peer-to-peer** between clients — this server does not relay audio/video, so no extra UDP/TCP ports are required for WebRTC today.
+
+```bash
+# SSH first — do not lock yourself out
+sudo ufw allow OpenSSH
+
+# nginx: ACME + HTTPS API (signaling WebSocket is wss://…/api/signal)
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw enable
+sudo ufw status verbose
+```
+
+Keep the Go API off the public internet: bind Docker to localhost only (`127.0.0.1:${API_HOST_PORT:-8080}:8080` in `docker-compose.yml`) and **do not** `ufw allow` the API port. nginx reaches it on `127.0.0.1:${API_PORT}`.
+
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| 22 | tcp | SSH (or your custom SSH port) |
+| 80 | tcp | HTTP → ACME + redirect to HTTPS |
+| 443 | tcp | HTTPS + WSS signaling to Go API |
+| 8080 | — | **closed** from WAN; localhost only |
+
+**Later (TURN in Go):** if you add a TURN relay on this host for NAT traversal, also open the TURN listener (commonly `3478/udp` and `3478/tcp`) and a UDP relay range (e.g. `49152:65535/udp`). Tune the range to match your TURN config.
+
 ### 1. API in Docker
 
 ```bash
@@ -66,7 +95,7 @@ API binds on the host at `127.0.0.1:${API_PORT}` (default `8080`).
 On the VPS:
 
 - DNS `A`/`AAAA` for `SERVER_NAME` points to the server
-- ports 80 and 443 are open
+- UFW allows 80 and 443 (see [Firewall](#firewall-ufw))
 - API is running (`make docker-prod-up`)
 
 ```bash

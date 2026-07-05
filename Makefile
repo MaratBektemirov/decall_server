@@ -1,5 +1,7 @@
 .PHONY: dev dev-down build docker-prod-up docker-prod-down nginx nginx-apply
 
+REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
 dev:
 	@if [ -f .env.dev ]; then \
 		docker compose -f docker-compose.dev.yml --env-file .env.dev up --build; \
@@ -22,8 +24,8 @@ docker-prod-down:
 
 nginx:
 	@test -f .env.prod || (echo "Copy .env.prod.example to .env.prod"; exit 1)
-	sudo bash -c 'set -a && source "$1/.env.prod" && set +a && exec "$1/scripts/nginx/setup.sh"' _ "$(pwd)"
+	sudo bash -c 'set -a && source "$$1/.env.prod" && set +a && exec "$$1/scripts/nginx/setup.sh"' _ "$(REPO_ROOT)"
 
 nginx-apply:
 	@test -f .env.prod || (echo "Copy .env.prod.example to .env.prod"; exit 1)
-	sudo SKIP_CERTBOT=1 bash -c 'set -a && source "$1/.env.prod" && set +a && exec "$1/scripts/nginx/setup.sh"' _ "$(pwd)"
+	sudo SKIP_CERTBOT=1 bash -c 'set -a && source "$$1/.env.prod" && set +a && exec "$$1/scripts/nginx/setup.sh"' _ "$(REPO_ROOT)"
