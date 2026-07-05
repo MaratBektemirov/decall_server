@@ -2,9 +2,9 @@
 
 dev:
 	@if [ -f .env.dev ]; then \
-		docker-compose -f docker-compose.dev.yml --env-file .env.dev up --build; \
+		docker compose -f docker-compose.dev.yml --env-file .env.dev up --build; \
 	else \
-		docker-compose -f docker-compose.dev.yml up --build; \
+		docker compose -f docker-compose.dev.yml up --build; \
 	fi
 
 dev-down:
