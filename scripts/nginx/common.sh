@@ -28,9 +28,49 @@ require_root() {
   fi
 }
 
+ensure_nginx_dirs() {
+  mkdir -p "$SITES_AVAILABLE" "$SITES_ENABLED" "$ACME_ROOT"
+}
+
+remove_default_site() {
+  rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/default.conf
+}
+
+ensure_nginx_includes_sites() {
+  local conf=/etc/nginx/nginx.conf
+
+  if grep -q 'sites-enabled' "$conf"; then
+    return 0
+  fi
+
+  local tmp
+  tmp="$(mktemp)"
+  awk '
+    /^http \{/ { in_http=1 }
+    in_http && /^}/ {
+      print "    include /etc/nginx/sites-enabled/*;"
+      in_http=0
+    }
+    { print }
+  ' "$conf" >"$tmp"
+  mv "$tmp" "$conf"
+  echo "[+] nginx.conf: enabled sites-enabled include"
+}
+
 install_nginx() {
+  ensure_nginx_dirs
+  ensure_nginx_includes_sites
+  remove_default_site
+
+  if command -v nginx >/dev/null && command -v certbot >/dev/null; then
+    echo "[*] nginx + certbot already installed"
+    return 0
+  fi
+
   apt-get update -qq
   DEBIAN_FRONTEND=noninteractive apt-get install -y nginx certbot
+  ensure_nginx_includes_sites
+  remove_default_site
 }
 
 ensure_ssl_params() {
@@ -63,7 +103,11 @@ enable_site() {
 
 reload_nginx() {
   nginx -t
-  systemctl reload nginx
+  if systemctl is-active --quiet nginx; then
+    systemctl reload nginx
+  else
+    systemctl enable --now nginx
+  fi
 }
 
 cert_path() {
@@ -77,8 +121,9 @@ has_cert() {
 deploy_nginx_conf() {
   local mode="${1:-auto}"
 
-  rm -f /etc/nginx/sites-enabled/default
-  rm -f "${SITES_ENABLED}/${SITE_FILE}" "${SITES_AVAILABLE}/${SITE_FILE}"
+  ensure_nginx_dirs
+  ensure_nginx_includes_sites
+  remove_default_site
 
   if [[ "$mode" == "http" ]] || { [[ "$mode" == "auto" ]] && ! has_cert; }; then
     ensure_proxy_snippets
@@ -93,6 +138,11 @@ deploy_nginx_conf() {
   enable_site
 }
 
+install_certbot_hook() {
+  install -d /etc/letsencrypt/renewal-hooks/deploy
+  install -m755 "${NGINX_DIR}/certbot-deploy-hook.sh" /etc/letsencrypt/renewal-hooks/deploy/decall-nginx.sh
+}
+
 run_certbot() {
   if [[ "${SKIP_CERTBOT:-0}" == "1" ]]; then
     return 0
@@ -102,10 +152,7 @@ run_certbot() {
     return 1
   fi
 
-  mkdir -p "$ACME_ROOT"
-
-  install -d /etc/letsencrypt/renewal-hooks/deploy
-  install -m755 "${NGINX_DIR}/certbot-deploy-hook.sh" /etc/letsencrypt/renewal-hooks/deploy/decall-nginx.sh
+  install_certbot_hook
 
   if has_cert; then
     echo "[*] cert present, renew if due"

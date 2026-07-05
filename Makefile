@@ -1,4 +1,4 @@
-.PHONY: dev dev-down build docker-prod-up docker-prod-down nginx nginx-apply
+.PHONY: dev dev-down build docker-prod-up docker-prod-down nginx nginx-apply deploy
 
 REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
@@ -26,3 +26,5 @@ nginx:
 nginx-apply:
 	@test -f .env.prod || (echo "Create .env.prod (see README)"; exit 1)
 	sudo SKIP_CERTBOT=1 bash -c 'set -a && source "$$1/.env.prod" && set +a && exec "$$1/scripts/nginx/setup.sh"' _ "$(REPO_ROOT)"
+
+deploy: docker-prod-up nginx-apply

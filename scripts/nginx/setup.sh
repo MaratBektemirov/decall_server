@@ -9,7 +9,6 @@ echo "[*] decall edge bootstrap (prod)"
 echo "    SERVER_NAME=$SERVER_NAME  API_PORT=$API_PORT  ACME_ROOT=$ACME_ROOT"
 
 install_nginx
-mkdir -p "$ACME_ROOT"
 
 if ! has_cert && [[ "${SKIP_CERTBOT:-0}" != "1" ]]; then
   deploy_nginx_conf http
@@ -19,6 +18,10 @@ fi
 
 deploy_nginx_conf auto
 reload_nginx
+
+if [[ "${SKIP_CERTBOT:-0}" != "1" ]]; then
+  run_certbot || true
+fi
 
 if has_cert; then
   echo "[+] edge online: https://${SERVER_NAME}/api"
