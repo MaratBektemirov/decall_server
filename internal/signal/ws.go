@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"decall_server/internal/config"
+	"decall_server/internal/words"
 )
 
 type Handler struct {
@@ -63,7 +64,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			joined, err := h.hub.Join(msg.RoomID, msg.Role)
+			roomID, err := words.NormalizeCallID(msg.RoomID)
+			if err != nil {
+				_ = conn.WriteJSON(Outbound{Type: "error", Message: err.Error()})
+				continue
+			}
+
+			joined, err := h.hub.Join(roomID, msg.Role)
 			if err != nil {
 				_ = conn.WriteJSON(Outbound{Type: "error", Message: err.Error()})
 				continue
