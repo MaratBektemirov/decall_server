@@ -19,6 +19,31 @@ services:
       AUTH_DOMAIN: ${AUTH_DOMAIN:-localhost}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       CHALLENGE_TTL_SEC: ${CHALLENGE_TTL_SEC:-300}
+      TURN_SECRET: ${TURN_SECRET:-dev-turn-secret}
+      TURN_HOST: ${TURN_HOST:-localhost}
+      TURN_REALM: ${TURN_REALM:-localhost}
+      TURN_CREDENTIAL_TTL_SEC: ${TURN_CREDENTIAL_TTL_SEC:-86400}
+      TURN_TLS: ${TURN_TLS:-false}
+    depends_on:
+      - coturn
+
+  coturn:
+    image: coturn/coturn:4.6.2-alpine
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49152-49252:49152-49252/udp"
+    environment:
+      TURN_SECRET: ${TURN_SECRET:-dev-turn-secret}
+      TURN_REALM: ${TURN_REALM:-localhost}
+      EXTERNAL_IP: ${EXTERNAL_IP:-127.0.0.1}
+      SERVER_NAME: ${SERVER_NAME:-localhost}
+      TURN_MIN_PORT: "49152"
+      TURN_MAX_PORT: "49252"
+      TURN_TLS: "false"
+    volumes:
+      - ./coturn/entrypoint.sh:/coturn-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/coturn-entrypoint.sh"]
 
 volumes:
   go_mod_cache:

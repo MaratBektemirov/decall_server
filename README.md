@@ -6,7 +6,7 @@
 
 Backend for [Decall](https://github.com/MaratBektemirov/decall_server) — decentralized calls with public-key authentication.
 
-Go API with no database. In production: Docker API behind **nginx** (proxies `/api` only; no static client hosting).
+Go API with no database. In production: Docker API + **coturn** behind **nginx** (proxies `/api` only; no static client hosting).
 
 Production env: `.env.prod` · local dev: `.env.dev`.
 
@@ -14,22 +14,28 @@ Production env: `.env.prod` · local dev: `.env.dev`.
 
 ```text
 cmd/server/main.go
-internal/auth/          # SecretAuth challenge
+internal/auth/          # SecretAuth challenge + proof verify
+internal/turn/          # TURN credentials (iceServers)
 internal/signal/        # WebRTC signaling hub
+coturn/                 # coturn entrypoint
 scripts/nginx/          # prod edge (HTTPS + /api → localhost)
-docker-compose.dev.yml  # dev: Air hot reload
-docker-compose.yml      # prod: API container
+docker-compose.dev.yml  # dev: API + coturn
+docker-compose.yml      # prod: API + coturn (host network)
 ```
 
 ## Local development
 
-Create `.env.dev` (or use the one in the repo):
+Create `.env.dev`:
 
 ```bash
 API_HOST_PORT=8080
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 AUTH_DOMAIN=localhost
 CHALLENGE_TTL_SEC=300
+TURN_SECRET=dev-turn-secret
+TURN_HOST=localhost
+TURN_REALM=localhost
+TURN_TLS=false
 ```
 
 ```bash
@@ -53,12 +59,23 @@ WebSocket signaling: `ws://localhost:8080/signal` (via client proxy: `/api/signa
 | `CORS_ORIGINS` | — | Allowed browser origins (comma-separated) |
 | `AUTH_DOMAIN` | — | Domain embedded in auth challenges |
 | `CHALLENGE_TTL_SEC` | `300` | Challenge lifetime in seconds |
+| `TURN_SECRET` | — | Shared secret for coturn + credential HMAC |
+| `TURN_HOST` | — | Hostname clients use in `iceServers` |
+| `TURN_REALM` | `TURN_HOST` | coturn realm |
+| `TURN_CREDENTIAL_TTL_SEC` | `86400` | TURN username expiry |
+| `TURN_TLS` | `true` (prod) | Enable TURNS on port 5349 when certs exist |
 
 ## Production
 
-### Firewall (UFW)
+### 1. DNS
 
-On the VPS, allow only what the stack needs. WebRTC **signaling** is served by the Go API and proxied by nginx over **HTTPS/WSS** (port 443). **Media** (RTP, `RTCDataChannel`) goes **peer-to-peer** between clients — this server does not relay audio/video, so no extra UDP/TCP ports are required for WebRTC today.
+Point `server-01.decall.app` (or your API hostname) to the VPS public IP:
+
+```text
+A    server-01.decall.app  →  YOUR_VPS_IP
+```
+
+### 2. Firewall (UFW)
 
 ```bash
 # SSH first — do not lock yourself out
@@ -68,77 +85,126 @@ sudo ufw allow OpenSSH
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 
+# coturn: STUN/TURN + relay media when P2P fails
+sudo ufw allow 3478/tcp
+sudo ufw allow 3478/udp
+sudo ufw allow 5349/tcp
+sudo ufw allow 49152:65535/udp
+
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw enable
 sudo ufw status verbose
 ```
 
-Keep the Go API off the public internet: bind Docker to localhost only (`127.0.0.1:${API_HOST_PORT:-8080}:8080` in `docker-compose.yml`) and **do not** `ufw allow` the API port. nginx listens on **80/443** and proxies `/api` → `127.0.0.1:${API_PORT}` (default **8080**, Go container).
+Keep the Go API off the public internet: bind Docker to localhost only (`127.0.0.1:8080`) and **do not** `ufw allow` port 8080.
 
 | Port | Protocol | Purpose |
 |------|----------|---------|
-| 22 | tcp | SSH (or your custom SSH port) |
+| 22 | tcp | SSH |
 | 80 | tcp | nginx: ACME + redirect to HTTPS |
-| 443 | tcp | nginx: HTTPS + WSS (`/api/signal` → container) |
+| 443 | tcp | nginx: HTTPS + WSS (`/api/signal` → Go API) |
+| 3478 | tcp, udp | coturn: STUN/TURN |
+| 5349 | tcp | coturn: TURNS (TLS) |
+| 49152–65535 | udp | coturn: relay ports |
 | 8080 | tcp | Go API on localhost only (Docker → host) |
 
-**Later (TURN in Go):** if you add a TURN relay on this host for NAT traversal, also open the TURN listener (commonly `3478/udp` and `3478/tcp`) and a UDP relay range (e.g. `49152:65535/udp`). Tune the range to match your TURN config.
+### 3. `.env.prod` on the VPS
 
-### 1. API in Docker
-
-Create `.env.prod` on the VPS:
+Copy the template and fill in secrets:
 
 ```bash
-SERVER_NAME=api.decall.example
+cp .env.prod.example .env.prod
+```
+
+```bash
+SERVER_NAME=server-01.decall.app
 CERTBOT_EMAIL=you@example.com
 API_PORT=8080
 API_HOST_PORT=8080
-AUTH_DOMAIN=api.decall.example
-CORS_ORIGINS=https://decall.example
+AUTH_DOMAIN=server-01.decall.app
+CORS_ORIGINS=https://decall.app
 CHALLENGE_TTL_SEC=300
+
+# TURN — generate secret: openssl rand -hex 32
+TURN_SECRET=your-64-char-hex-secret
+TURN_HOST=server-01.decall.app
+TURN_REALM=server-01.decall.app
+EXTERNAL_IP=YOUR_VPS_PUBLIC_IP
+TURN_TLS=true
+TURN_CREDENTIAL_TTL_SEC=86400
 ```
+
+`AUTH_DOMAIN` and `TURN_HOST` are hostnames only (no `https://`). `TURN_SECRET` must match between the Go API and coturn (same value in `.env.prod`).
+
+### 4. Deploy API + coturn
+
+On the VPS, from the repo directory:
 
 ```bash
+git pull
 make docker-prod-up
-make docker-prod-down
 ```
 
-API container on `127.0.0.1:8080`; nginx on **80/443** proxies `https://$SERVER_NAME/api/*` to it.
+Check containers:
 
-### 2. nginx + Let's Encrypt
+```bash
+docker compose --env-file .env.prod ps
+make docker-prod-logs
+```
 
-On the VPS:
+### 5. nginx + Let's Encrypt
 
-- DNS `A`/`AAAA` for `SERVER_NAME` points to the server
-- UFW allows 80 and 443 (see [Firewall](#firewall-ufw))
-- API is running (`make docker-prod-up`)
+Requires DNS, UFW (80/443), and running API:
 
 ```bash
 sudo make nginx
 ```
 
-The script installs nginx and certbot, serves HTTP (ACME + `/api`), obtains a certificate, then switches to HTTPS (redirect 80 → 443).
-
-```bash
-curl https://api.decall.example/api/health
-```
-
-Re-apply nginx config without certbot (e.g. after port changes):
+Re-apply nginx without certbot (e.g. after port changes):
 
 ```bash
 sudo make nginx-apply
 ```
 
-| `.env.prod` | Description |
-|-------------|-------------|
-| `SERVER_NAME` | API hostname, e.g. `api.decall.example` |
-| `CERTBOT_EMAIL` | Let's Encrypt contact email |
-| `API_PORT` | Go API on localhost — nginx upstream (default `8080`) |
-| `API_HOST_PORT` | Host port mapped by Docker (`8080` → container `8080`) |
-| `CORS_ORIGINS` | Allowed browser origins (comma-separated) |
+Verify:
 
-Client static assets (`decall_client`) are **not** served here — host them separately.
+```bash
+curl https://server-01.decall.app/api/health
+curl https://server-01.decall.app/api/auth/challenge
+```
+
+### 6. Full deploy (API + nginx config)
+
+```bash
+git pull
+make deploy
+```
+
+This runs `docker-prod-up` then `nginx-apply`.
+
+### 7. After certificate renewal
+
+coturn reads TLS certs from `/etc/letsencrypt`. Restart coturn after certbot renews:
+
+```bash
+docker compose --env-file .env.prod restart coturn
+```
+
+Or add to `scripts/nginx/certbot-deploy-hook.sh` if you automate renewals.
+
+### Troubleshooting TURN
+
+```bash
+# coturn listening?
+sudo ss -ulnp | grep 3478
+sudo ss -tlnp | grep 5349
+
+# relay UDP range
+sudo ss -ulnp | grep turnserver
+
+# test from client: chrome://webrtc-internals → look for typ relay candidates
+```
 
 ## API
 
@@ -146,10 +212,11 @@ Client static assets (`decall_client`) are **not** served here — host them sep
 |----------|-------------|
 | `GET /health` | Health check |
 | `GET /auth/challenge` | SecretAuth challenge (`domain`, `nonce`, `exp`) |
+| `POST /turn-credentials` | TURN `iceServers` (body: `{ "proof": SecretAuthProof }`) |
 | `WS /signal` | WebRTC signaling (`join`, `offer`, `answer`, `ice`) |
 
-Chat messages travel P2P over `RTCDataChannel`; the server only relays signaling.
+Chat messages travel P2P over `RTCDataChannel`; the server relays signaling. Media uses P2P when possible, otherwise **coturn**.
 
 **Client:** [decall_client](https://github.com/MaratBektemirov/decall_client) · auth via [cruzo-web3](https://www.npmjs.com/package/cruzo-web3).
 
-**Planned:** proof verification, voice calls.
+**Planned:** proof verification on signaling, voice calls polish.

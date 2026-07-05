@@ -14,6 +14,7 @@ import (
 	"decall_server/internal/config"
 	"decall_server/internal/middleware"
 	signaling "decall_server/internal/signal"
+	"decall_server/internal/turn"
 	"decall_server/internal/words"
 )
 
@@ -23,6 +24,7 @@ func main() {
 
 	cfg := config.Load()
 	authHandler := auth.NewHandler(cfg)
+	turnHandler := turn.NewHandler(cfg, authHandler)
 	signalHub := signaling.NewHub()
 	signalHandler := signaling.NewHandler(cfg, signalHub)
 
@@ -52,6 +54,9 @@ func main() {
 
 	// Allowing pre requests for the browser
 	mux.HandleFunc("OPTIONS /generate-id", middleware.WithCORS(cfg.CORSOrigins, func(w http.ResponseWriter, r *http.Request) {}))
+
+	mux.HandleFunc("POST /turn-credentials", middleware.WithCORS(cfg.CORSOrigins, turnHandler.IssueCredentials))
+	mux.HandleFunc("OPTIONS /turn-credentials", middleware.WithCORS(cfg.CORSOrigins, func(w http.ResponseWriter, r *http.Request) {}))
 
 	mux.Handle("GET /signal", signalHandler)
 

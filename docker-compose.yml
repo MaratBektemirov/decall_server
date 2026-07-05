@@ -9,4 +9,28 @@ services:
       AUTH_DOMAIN: ${AUTH_DOMAIN:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       CHALLENGE_TTL_SEC: ${CHALLENGE_TTL_SEC:-300}
+      TURN_SECRET: ${TURN_SECRET:-}
+      TURN_HOST: ${TURN_HOST:-}
+      TURN_REALM: ${TURN_REALM:-}
+      TURN_CREDENTIAL_TTL_SEC: ${TURN_CREDENTIAL_TTL_SEC:-86400}
+      TURN_TLS: ${TURN_TLS:-true}
     restart: unless-stopped
+    depends_on:
+      - coturn
+
+  coturn:
+    image: coturn/coturn:4.6.2-alpine
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TURN_SECRET: ${TURN_SECRET:?set TURN_SECRET in .env.prod}
+      TURN_REALM: ${TURN_REALM:-${AUTH_DOMAIN}}
+      EXTERNAL_IP: ${EXTERNAL_IP:?set EXTERNAL_IP in .env.prod}
+      SERVER_NAME: ${SERVER_NAME:?set SERVER_NAME in .env.prod}
+      TURN_MIN_PORT: ${TURN_MIN_PORT:-49152}
+      TURN_MAX_PORT: ${TURN_MAX_PORT:-65535}
+      TURN_TLS: ${TURN_TLS:-true}
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./coturn/entrypoint.sh:/coturn-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/coturn-entrypoint.sh"]

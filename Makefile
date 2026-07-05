@@ -1,4 +1,4 @@
-.PHONY: dev dev-down build docker-prod-up docker-prod-down nginx nginx-apply deploy
+.PHONY: dev dev-down build docker-prod-up docker-prod-down nginx nginx-apply deploy docker-prod-logs
 
 REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
@@ -28,3 +28,7 @@ nginx-apply:
 	sudo SKIP_CERTBOT=1 bash -c 'set -a && source "$$1/.env.prod" && set +a && exec "$$1/scripts/nginx/setup.sh"' _ "$(REPO_ROOT)"
 
 deploy: docker-prod-up nginx-apply
+
+docker-prod-logs:
+	@test -f .env.prod || (echo "Create .env.prod (see README)"; exit 1)
+	docker compose -f docker-compose.yml --env-file .env.prod logs -f api coturn
