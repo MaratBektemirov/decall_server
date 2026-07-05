@@ -74,14 +74,14 @@ sudo ufw enable
 sudo ufw status verbose
 ```
 
-Keep the Go API off the public internet: bind Docker to localhost only (`127.0.0.1:${API_HOST_PORT:-80}:8080` in `docker-compose.yml`) and **do not** `ufw allow` the API port. nginx reaches it on `127.0.0.1:${API_PORT}`.
+Keep the Go API off the public internet: bind Docker to localhost only (`127.0.0.1:${API_HOST_PORT:-8080}:8080` in `docker-compose.yml`) and **do not** `ufw allow` the API port. nginx listens on **80/443** and proxies `/api` → `127.0.0.1:${API_PORT}` (default **8080**, Go container).
 
 | Port | Protocol | Purpose |
 |------|----------|---------|
 | 22 | tcp | SSH (or your custom SSH port) |
-| 80 | tcp | HTTP → ACME + redirect to HTTPS |
-| 443 | tcp | HTTPS + WSS signaling to Go API |
-| 80 (localhost) | tcp | API upstream for nginx (`API_PORT`, not exposed via UFW) |
+| 80 | tcp | nginx: ACME + redirect to HTTPS |
+| 443 | tcp | nginx: HTTPS + WSS (`/api/signal` → container) |
+| 8080 | tcp | Go API on localhost only (Docker → host) |
 
 **Later (TURN in Go):** if you add a TURN relay on this host for NAT traversal, also open the TURN listener (commonly `3478/udp` and `3478/tcp`) and a UDP relay range (e.g. `49152:65535/udp`). Tune the range to match your TURN config.
 
@@ -92,8 +92,8 @@ Create `.env.prod` on the VPS:
 ```bash
 SERVER_NAME=api.decall.example
 CERTBOT_EMAIL=you@example.com
-API_PORT=80
-API_HOST_PORT=80
+API_PORT=8080
+API_HOST_PORT=8080
 AUTH_DOMAIN=api.decall.example
 CORS_ORIGINS=https://decall.example
 CHALLENGE_TTL_SEC=300
@@ -104,7 +104,7 @@ make docker-prod-up
 make docker-prod-down
 ```
 
-API binds on the host at `127.0.0.1:${API_PORT}` (default `80`).
+API container on `127.0.0.1:8080`; nginx on **80/443** proxies `https://$SERVER_NAME/api/*` to it.
 
 ### 2. nginx + Let's Encrypt
 
@@ -134,8 +134,8 @@ sudo make nginx-apply
 |-------------|-------------|
 | `SERVER_NAME` | API hostname, e.g. `api.decall.example` |
 | `CERTBOT_EMAIL` | Let's Encrypt contact email |
-| `API_PORT` | API port on localhost (nginx upstream) |
-| `API_HOST_PORT` | Host port mapped by Docker Compose |
+| `API_PORT` | Go API on localhost — nginx upstream (default `8080`) |
+| `API_HOST_PORT` | Host port mapped by Docker (`8080` → container `8080`) |
 | `CORS_ORIGINS` | Allowed browser origins (comma-separated) |
 
 Client static assets (`decall_client`) are **not** served here — host them separately.

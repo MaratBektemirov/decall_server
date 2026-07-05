@@ -12,7 +12,7 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 SERVER_NAME="${SERVER_NAME:-api.decall.example}"
-API_PORT="${API_PORT:-80}"
+API_PORT="${API_PORT:-8080}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 ACME_ROOT="${ACME_ROOT:-/var/www/certbot}"
 
@@ -37,10 +37,15 @@ ensure_ssl_params() {
   local ssl_dir=/etc/nginx/snippets/decall
   mkdir -p "$ssl_dir"
   install -m644 "${NGINX_DIR}/conf/options-ssl-nginx.conf" "${ssl_dir}/options-ssl-nginx.conf"
+  install -m644 "${NGINX_DIR}/conf/upgrade-map.conf" /etc/nginx/conf.d/decall-upgrade-map.conf
   if [[ ! -f "${ssl_dir}/ssl-dhparams.pem" ]]; then
     echo "[*] generating dhparam (once, ~1 min)..."
     openssl dhparam -out "${ssl_dir}/ssl-dhparams.pem" 2048
   fi
+}
+
+ensure_proxy_snippets() {
+  install -m644 "${NGINX_DIR}/conf/upgrade-map.conf" /etc/nginx/conf.d/decall-upgrade-map.conf
 }
 
 render_conf() {
@@ -76,6 +81,7 @@ deploy_nginx_conf() {
   rm -f "${SITES_ENABLED}/${SITE_FILE}" "${SITES_AVAILABLE}/${SITE_FILE}"
 
   if [[ "$mode" == "http" ]] || { [[ "$mode" == "auto" ]] && ! has_cert; }; then
+    ensure_proxy_snippets
     render_conf "${NGINX_DIR}/conf/site.http.conf" "${SITES_AVAILABLE}/${SITE_FILE}"
     echo "[+] HTTP config deployed (API + ACME webroot)"
   else
