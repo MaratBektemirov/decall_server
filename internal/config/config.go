@@ -20,11 +20,9 @@ func Load() Config {
 		}
 	}
 
-	origins := []string{"http://localhost:5173", "http://127.0.0.1:5173"}
+	origins := []string{}
 	if v := strings.TrimSpace(os.Getenv("CORS_ORIGINS")); v != "" {
-		parts := strings.Split(v, ",")
-		origins = origins[:0]
-		for _, p := range parts {
+		for _, p := range strings.Split(v, ",") {
 			p = strings.TrimSpace(p)
 			if p != "" {
 				origins = append(origins, p)

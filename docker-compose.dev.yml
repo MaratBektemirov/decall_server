@@ -17,7 +17,7 @@ services:
       GOMODCACHE: /go/pkg/mod
       GOCACHE: /root/.cache/go-build
       AUTH_DOMAIN: ${AUTH_DOMAIN:-localhost}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       CHALLENGE_TTL_SEC: ${CHALLENGE_TTL_SEC:-300}
 
 volumes:

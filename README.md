@@ -8,7 +8,7 @@ Backend for [Decall](https://github.com/MaratBektemirov/decall_server) — decen
 
 Go API with no database. In production: Docker API behind **nginx** (proxies `/api` only; no static client hosting).
 
-Production env: `.env.prod` (see `.env.prod.example`).
+Production env: `.env.prod` · local dev: `.env.dev`.
 
 ## Layout
 
@@ -23,15 +23,21 @@ docker-compose.yml      # prod: API container
 
 ## Local development
 
+Create `.env.dev` (or use the one in the repo):
+
 ```bash
-# Docker + Air (reloads on .go changes)
+API_HOST_PORT=8080
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+AUTH_DOMAIN=localhost
+CHALLENGE_TTL_SEC=300
+```
+
+```bash
 make dev
 make dev-down
 ```
 
 API: `http://localhost:8080` · client: `http://localhost:5173` (proxies `/api`).
-
-Optional: copy `.env.dev.example` → `.env.dev` (`CORS_ORIGINS`, `AUTH_DOMAIN`).
 
 ```bash
 curl http://localhost:8080/health
@@ -42,7 +48,8 @@ WebSocket signaling: `ws://localhost:8080/signal` (via client proxy: `/api/signa
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HTTP_ADDR` | `:8080` | HTTP listen address |
+| `HTTP_ADDR` | `:8080` | HTTP listen address (inside container) |
+| `API_HOST_PORT` | `8080` | Host port mapped by Docker Compose (dev) |
 | `CORS_ORIGINS` | — | Allowed browser origins (comma-separated) |
 | `AUTH_DOMAIN` | — | Domain embedded in auth challenges |
 | `CHALLENGE_TTL_SEC` | `300` | Challenge lifetime in seconds |
@@ -67,28 +74,37 @@ sudo ufw enable
 sudo ufw status verbose
 ```
 
-Keep the Go API off the public internet: bind Docker to localhost only (`127.0.0.1:${API_HOST_PORT:-8080}:8080` in `docker-compose.yml`) and **do not** `ufw allow` the API port. nginx reaches it on `127.0.0.1:${API_PORT}`.
+Keep the Go API off the public internet: bind Docker to localhost only (`127.0.0.1:${API_HOST_PORT:-80}:8080` in `docker-compose.yml`) and **do not** `ufw allow` the API port. nginx reaches it on `127.0.0.1:${API_PORT}`.
 
 | Port | Protocol | Purpose |
 |------|----------|---------|
 | 22 | tcp | SSH (or your custom SSH port) |
 | 80 | tcp | HTTP → ACME + redirect to HTTPS |
 | 443 | tcp | HTTPS + WSS signaling to Go API |
-| 8080 | — | **closed** from WAN; localhost only |
+| 80 (localhost) | tcp | API upstream for nginx (`API_PORT`, not exposed via UFW) |
 
 **Later (TURN in Go):** if you add a TURN relay on this host for NAT traversal, also open the TURN listener (commonly `3478/udp` and `3478/tcp`) and a UDP relay range (e.g. `49152:65535/udp`). Tune the range to match your TURN config.
 
 ### 1. API in Docker
 
-```bash
-cp .env.prod.example .env.prod
-# edit SERVER_NAME, CERTBOT_EMAIL, API_PORT
+Create `.env.prod` on the VPS:
 
+```bash
+SERVER_NAME=api.decall.example
+CERTBOT_EMAIL=you@example.com
+API_PORT=80
+API_HOST_PORT=80
+AUTH_DOMAIN=api.decall.example
+CORS_ORIGINS=https://decall.example
+CHALLENGE_TTL_SEC=300
+```
+
+```bash
 make docker-prod-up
 make docker-prod-down
 ```
 
-API binds on the host at `127.0.0.1:${API_PORT}` (default `8080`).
+API binds on the host at `127.0.0.1:${API_PORT}` (default `80`).
 
 ### 2. nginx + Let's Encrypt
 
@@ -120,6 +136,7 @@ sudo make nginx-apply
 | `CERTBOT_EMAIL` | Let's Encrypt contact email |
 | `API_PORT` | API port on localhost (nginx upstream) |
 | `API_HOST_PORT` | Host port mapped by Docker Compose |
+| `CORS_ORIGINS` | Allowed browser origins (comma-separated) |
 
 Client static assets (`decall_client`) are **not** served here — host them separately.
 

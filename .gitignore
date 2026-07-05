@@ -1,7 +1,5 @@
 tmp/
 dist/
-.env
-.env.dev
-.env.prod
 .DS_Store
 .idea
+.env.prod

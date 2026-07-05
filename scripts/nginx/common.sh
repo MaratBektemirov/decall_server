@@ -12,7 +12,7 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 SERVER_NAME="${SERVER_NAME:-api.decall.example}"
-API_PORT="${API_PORT:-8080}"
+API_PORT="${API_PORT:-80}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 ACME_ROOT="${ACME_ROOT:-/var/www/certbot}"
 
