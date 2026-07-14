@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"decall_server/internal/auth"
+	"decall_server/internal/callid"
 	"decall_server/internal/config"
 	"decall_server/internal/middleware"
 	signaling "decall_server/internal/signal"
 	"decall_server/internal/turn"
-	"decall_server/internal/words"
 )
 
 func main() {
@@ -46,7 +46,7 @@ func main() {
 			return
 		}
 
-		callID := words.GenerateID(pubKey)
+		callID := callid.GenerateID(pubKey)
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"id": callID})

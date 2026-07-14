@@ -1,4 +1,4 @@
-package words
+package callid
 
 import (
 	"errors"
@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// NormalizeCallID strips non-digits and formats as XXXX-XXXX-XXXX-XXXX.
-func NormalizeCallID(id string) (string, error) {
+// Normalize strips non-digits and formats as XXXX-XXXX-XXXX-XXXX.
+func Normalize(id string) (string, error) {
 	var digits strings.Builder
 	for _, r := range id {
 		if r >= '0' && r <= '9' {

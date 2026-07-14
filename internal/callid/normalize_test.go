@@ -1,4 +1,4 @@
-package words
+package callid
 
 import "testing"
 
@@ -14,7 +14,7 @@ func TestNormalizeCallID(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		got, err := NormalizeCallID(tc.in)
+		got, err := Normalize(tc.in)
 		if err != nil {
 			t.Fatalf("NormalizeCallID(%q): %v", tc.in, err)
 		}
@@ -25,7 +25,7 @@ func TestNormalizeCallID(t *testing.T) {
 }
 
 func TestNormalizeCallIDInvalid(t *testing.T) {
-	if _, err := NormalizeCallID("1234-5678"); err == nil {
+	if _, err := Normalize("1234-5678"); err == nil {
 		t.Fatal("expected error for short id")
 	}
 }
