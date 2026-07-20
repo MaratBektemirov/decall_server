@@ -2,23 +2,31 @@ package callid
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 )
 
-// Normalize strips non-digits and formats as XXXX-XXXX-XXXX-XXXX.
+// Normalize strips separators, applies Crockford decoding rules, and formats as XXXXX-XXXXX-XXXXX.
 func Normalize(id string) (string, error) {
-	var digits strings.Builder
+	var chars strings.Builder
+	chars.Grow(encodedLength)
+
 	for _, r := range id {
-		if r >= '0' && r <= '9' {
-			digits.WriteRune(r)
+		if r == '-' || r == ' ' || r == '.' {
+			continue
 		}
+
+		c, ok := decodeCrockfordRune(r)
+		if !ok {
+			continue
+		}
+
+		chars.WriteByte(c)
 	}
 
-	d := digits.String()
-	if len(d) != 16 {
-		return "", errors.New("call id must contain 16 digits")
+	raw := chars.String()
+	if len(raw) != encodedLength {
+		return "", errors.New("call id must contain 15 crockford characters")
 	}
 
-	return fmt.Sprintf("%s-%s-%s-%s", d[0:4], d[4:8], d[8:12], d[12:16]), nil
+	return formatGrouped(raw, 5), nil
 }
